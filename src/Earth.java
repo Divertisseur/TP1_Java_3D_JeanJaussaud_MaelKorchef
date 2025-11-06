@@ -21,6 +21,7 @@ public class Earth extends Group {
     public Earth() {
         // Création de la sphère de rayon 300
         sph = new Sphere(300);
+        sph.setPickOnBounds(true); // S'assurer que la sphère est pickable pour les clics
         
         // Configuration de la rotation autour de l'axe Y
         ry = new Rotate(0, Rotate.Y_AXIS);
@@ -44,13 +45,25 @@ public class Earth extends Group {
 
     /**
      * Définit la texture de la Terre
-     * @param texturePath Le chemin vers l'image de texture
+     * @param texturePath Le chemin vers l'image de texture (relatif ou absolu)
      */
     public void setTexture(String texturePath) {
         try {
             PhongMaterial material = new PhongMaterial();
-            material.setDiffuseMap(new javafx.scene.image.Image(texturePath));
-            sph.setMaterial(material);
+            // Convertir le chemin en File puis en URL pour gérer les chemins relatifs
+            java.io.File file = new java.io.File(texturePath);
+            if (!file.exists()) {
+                // Si le fichier n'existe pas, essayer avec le répertoire de travail actuel
+                file = new java.io.File(System.getProperty("user.dir"), texturePath);
+            }
+            if (file.exists()) {
+                String url = file.toURI().toURL().toString();
+                material.setDiffuseMap(new javafx.scene.image.Image(url));
+                sph.setMaterial(material);
+                System.out.println("Texture chargée avec succès : " + file.getAbsolutePath());
+            } else {
+                throw new java.io.FileNotFoundException("Fichier de texture non trouvé : " + texturePath);
+            }
         } catch (Exception e) {
             System.err.println("Erreur lors du chargement de la texture : " + e.getMessage());
             // Matériau par défaut si la texture ne peut pas être chargée
@@ -67,7 +80,7 @@ public class Earth extends Group {
      * @return La sphère créée
      */
     public Sphere createSphere(Aeroport a, Color color) {
-        Sphere sphere = new Sphere(2);
+        Sphere sphere = new Sphere(5); // Augmenté à 5 pour une meilleure visibilité
         PhongMaterial material = new PhongMaterial();
         material.setDiffuseColor(color);
         sphere.setMaterial(material);
@@ -76,18 +89,23 @@ public class Earth extends Group {
         // Formule : X = R * cos(lat) * sin(lon)
         //           Y = -R * sin(lat)
         //           Z = -R * cos(lat) * cos(lon)
-        // Avec R = 300 (rayon de la Terre) et un facteur de correction de 1.3 pour la latitude
+        // Avec R = 300 (rayon de la Terre)
         double R = 300.0;
         double latRad = Math.toRadians(a.getLatitude());
         double lonRad = Math.toRadians(a.getLongitude());
         
         double x = R * Math.cos(latRad) * Math.sin(lonRad);
-        double y = -R * Math.sin(latRad) * 1.3; // Facteur de correction empirique
+        double y = -R * Math.sin(latRad);
         double z = -R * Math.cos(latRad) * Math.cos(lonRad);
         
-        sphere.setTranslateX(x);
-        sphere.setTranslateY(y);
-        sphere.setTranslateZ(z);
+        // Positionner la sphère légèrement au-dessus de la surface de la Terre pour qu'elle soit visible
+        double scale = 1.02; // 2% au-dessus de la surface
+        sphere.setTranslateX(x * scale);
+        sphere.setTranslateY(y * scale);
+        sphere.setTranslateZ(z * scale);
+        
+        // S'assurer que la sphère est pickable
+        sphere.setPickOnBounds(true);
         
         return sphere;
     }
@@ -100,6 +118,8 @@ public class Earth extends Group {
         if (a != null) {
             Sphere redSphere = createSphere(a, Color.RED);
             this.getChildren().add(redSphere);
+            System.out.println("Sphère rouge créée et ajoutée au groupe. Nombre d'enfants: " + this.getChildren().size());
+            System.out.println("Position de la sphère: (" + redSphere.getTranslateX() + ", " + redSphere.getTranslateY() + ", " + redSphere.getTranslateZ() + ")");
         }
     }
 
@@ -120,6 +140,14 @@ public class Earth extends Group {
      */
     public Sphere getSph() {
         return sph;
+    }
+
+    /**
+     * Retourne la transformation de rotation de la Terre
+     * @return La rotation autour de l'axe Y
+     */
+    public Rotate getRy() {
+        return ry;
     }
 }
 

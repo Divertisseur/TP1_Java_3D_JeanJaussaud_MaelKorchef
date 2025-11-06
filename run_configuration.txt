@@ -1,0 +1,15 @@
+Configuration pour IntelliJ IDEA - Run Configuration
+
+Nom de la configuration : Interface
+
+Type : Application
+
+Main class : Interface
+
+VM options :
+--module-path "C:\Users\MaelK\Documents\Projets Java\SDKs\javafx-sdk-25.0.1\lib" --add-modules javafx.controls,javafx.fxml,javafx.graphics,javafx.base --enable-native-access=javafx.graphics
+
+Working directory : C:\Users\MaelK\Documents\Projets Java\TP1_Java_3D
+
+Use classpath of module : TP1_Java_3D
+
