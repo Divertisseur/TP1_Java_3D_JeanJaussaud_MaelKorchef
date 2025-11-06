@@ -39,9 +39,10 @@ public class Interface extends Application {
         
         // Tentative de chargement de la texture (si disponible)
         try {
-            earth.setTexture("data/earth_texture.jpg");
+            earth.setTexture("data/earth_lights_4800.png");
         } catch (Exception e) {
             System.out.println("Texture non trouvée, utilisation de la couleur par défaut");
+            e.printStackTrace();
         }
         
         Pane pane = new Pane(earth);
