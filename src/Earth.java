@@ -80,7 +80,7 @@ public class Earth extends Group {
      * @return La sphère créée
      */
     public Sphere createSphere(Aeroport a, Color color) {
-        Sphere sphere = new Sphere(5); // Augmenté à 5 pour une meilleure visibilité
+        Sphere sphere = new Sphere(2); // Rayon 2 selon les spécifications du PDF
         PhongMaterial material = new PhongMaterial();
         material.setDiffuseColor(color);
         sphere.setMaterial(material);

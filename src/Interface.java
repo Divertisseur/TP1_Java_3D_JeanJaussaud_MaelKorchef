@@ -85,11 +85,11 @@ public class Interface extends Application {
                 PickResult pickResult = event.getPickResult();
                 javafx.scene.Node intersectedNode = pickResult.getIntersectedNode();
                 
-                // Vérifier si on a cliqué sur la sphère de la Terre
+                // Vérifier si on a cliqué sur la sphère de la Terre ou une sphère d'aéroport
                 if (intersectedNode == earth.getSph() || (intersectedNode != null && intersectedNode.getParent() == earth)) {
-                    // Utiliser les coordonnées locales de la sphère (déjà dans le système sans rotation)
+                    // Utiliser les coordonnées locales de la sphère
+                    // PickResult retourne les coordonnées dans le système local de la sphère (sans rotation)
                     javafx.geometry.Point3D localPoint = pickResult.getIntersectedPoint();
-                    System.out.println("Point d'intersection local (sphère): (" + localPoint.getX() + ", " + localPoint.getY() + ", " + localPoint.getZ() + ")");
                     
                     double R = 300.0;
                     double x = localPoint.getX();
@@ -104,9 +104,16 @@ public class Interface extends Application {
                         z = (z / dist) * R;
                     }
                     
-                    // Conversion directe en GPS (pas besoin d'inverser la rotation car on est déjà dans le système local)
+                    // Conversion directe en GPS (PickResult donne déjà les coordonnées dans le système local sans rotation)
                     double latitude = Math.toDegrees(-Math.asin(y / R));
                     double longitude = Math.toDegrees(Math.atan2(x, -z));
+                    
+                    // Vérifier que les coordonnées sont valides
+                    if (Double.isNaN(latitude) || Double.isNaN(longitude) || 
+                        Double.isInfinite(latitude) || Double.isInfinite(longitude)) {
+                        System.out.println("ERREUR: Coordonnées GPS invalides !");
+                        return;
+                    }
                     
                     System.out.println("Coordonnées GPS calculées (méthode PickResult): latitude=" + latitude + ", longitude=" + longitude);
                     
@@ -120,7 +127,6 @@ public class Interface extends Application {
                         
                         // Affichage de la boule rouge sur l'aéroport
                         earth.displayRedSphere(nearest);
-                        System.out.println("Sphère rouge ajoutée pour l'aéroport " + nearest.getCodeIATA());
                         
                         // Récupération des vols en direction de cet aéroport via l'API
                         fetchFlightsForAirport(nearest);
@@ -131,29 +137,20 @@ public class Interface extends Application {
                 }
                 
                 // Sinon, utiliser la méthode de projection manuelle
-                System.out.println("PickResult n'a pas trouvé la sphère, utilisation de la projection manuelle");
-                
                 // Utiliser les coordonnées 2D de la souris pour projeter un rayon depuis la caméra
                 double mouseX = event.getSceneX();
                 double mouseY = event.getSceneY();
                 double sceneWidth = theScene.getWidth();
                 double sceneHeight = theScene.getHeight();
                 
-                System.out.println("Position souris: (" + mouseX + ", " + mouseY + ")");
-                System.out.println("Taille scène: " + sceneWidth + " x " + sceneHeight);
-                
                 // Convertir les coordonnées de la souris en coordonnées normalisées (-1 à 1)
                 double normalizedX = (mouseX / sceneWidth) * 2.0 - 1.0;
                 double normalizedY = 1.0 - (mouseY / sceneHeight) * 2.0; // Inverser Y
-                
-                System.out.println("Coordonnées normalisées: (" + normalizedX + ", " + normalizedY + ")");
                 
                 // Obtenir les paramètres de la caméra
                 double cameraZ = camera.getTranslateZ();
                 double fieldOfView = camera.getFieldOfView();
                 double aspectRatio = sceneWidth / sceneHeight;
-                
-                System.out.println("Caméra Z: " + cameraZ + ", FOV: " + fieldOfView + ", Aspect: " + aspectRatio);
                 
                 // Calculer la distance focale basée sur le field of view
                 double fovRad = Math.toRadians(fieldOfView);
@@ -175,12 +172,9 @@ public class Interface extends Application {
                 
                 // Intersection du rayon avec la sphère (centre à (0,0,0), rayon R=300)
                 double R = 300.0;
-                // La caméra peut avoir des translations X et Y
                 double cameraX = camera.getTranslateX();
                 double cameraY = camera.getTranslateY();
                 double cameraZPos = cameraZ;
-                
-                System.out.println("Position caméra: (" + cameraX + ", " + cameraY + ", " + cameraZPos + ")");
                 
                 // Équation : ||camera + t*rayDir|| = R
                 // Résoudre pour t : t² + 2*(camera·rayDir)*t + (||camera||² - R²) = 0
@@ -193,12 +187,10 @@ public class Interface extends Application {
                     double t = -dot - Math.sqrt(discriminant);
                     if (t < 0) t = -dot + Math.sqrt(discriminant);
                     
-                    // Point d'intersection sur la sphère (dans le système de la scène)
+                    // Point d'intersection sur la sphère (dans le système de la scène avec rotation)
                     double x = cameraX + t * rayDirX;
                     double y = cameraY + t * rayDirY;
                     double z = cameraZPos + t * rayDirZ;
-                    
-                    System.out.println("Point d'intersection 3D calculé: (" + x + ", " + y + ", " + z + ")");
                     
                     // Normaliser le point pour s'assurer qu'il est sur la sphère
                     double dist = Math.sqrt(x*x + y*y + z*z);
@@ -208,37 +200,26 @@ public class Interface extends Application {
                         z = (z / dist) * R;
                     }
                     
-                    // Obtenir l'angle de rotation actuel de la Terre
+                    // IMPORTANT: Inverser la rotation de la Terre pour obtenir les coordonnées dans le système local
+                    // La Terre tourne autour de l'axe Y, donc on doit appliquer une rotation inverse
                     double rotationAngle = earth.getRy().getAngle();
                     double rotationRad = Math.toRadians(rotationAngle);
+                    double cosRot = Math.cos(rotationRad);
+                    double sinRot = Math.sin(rotationRad);
                     
-                    System.out.println("Angle de rotation de la Terre: " + rotationAngle + " degrés");
+                    // Inversion de la rotation autour de Y: rotation de -angle
+                    // x_local = x * cos(-θ) - z * sin(-θ) = x * cos(θ) + z * sin(θ)
+                    // z_local = x * sin(-θ) + z * cos(-θ) = -x * sin(θ) + z * cos(θ)
+                    double xLocal = x * cosRot + z * sinRot;
+                    double zLocal = -x * sinRot + z * cosRot;
                     
-                    // Inverser la rotation autour de l'axe Y pour obtenir les coordonnées dans le système local
-                    // La rotation est appliquée au groupe Earth, donc nous devons l'inverser
-                    // Si la rotation transforme (x,z) en (x',z'), alors :
-                    // x' = x*cos(θ) - z*sin(θ)
-                    // z' = x*sin(θ) + z*cos(θ)
-                    // Pour inverser, on fait :
-                    // x = x'*cos(θ) + z'*sin(θ)
-                    // z = -x'*sin(θ) + z'*cos(θ)
-                    // Mais comme la rotation est appliquée dans le sens positif, on inverse avec -θ
-                    double cosRot = Math.cos(-rotationRad);
-                    double sinRot = Math.sin(-rotationRad);
-                    double xLocal = x * cosRot - z * sinRot;
-                    double zLocal = x * sinRot + z * cosRot;
-                    
-                    System.out.println("Point après inversion rotation: (" + xLocal + ", " + y + ", " + zLocal + ")");
-                    
-                    // Calcul de la latitude : lat = -arcsin(y / R)
-                    // y est déjà normalisé, donc y/R devrait être entre -1 et 1
+                    // Conversion des coordonnées 3D locales en GPS
+                    // Formule inverse de createSphere:
+                    // X = R * cos(lat) * sin(lon)  =>  sin(lon) = X / (R * cos(lat))
+                    // Y = -R * sin(lat)  =>  lat = -arcsin(Y / R)
+                    // Z = -R * cos(lat) * cos(lon)  =>  cos(lon) = -Z / (R * cos(lat))
                     double latitude = Math.toDegrees(-Math.asin(y / R));
-                    
-                    // Calcul de la longitude : lon = atan2(x, -z)
-                    // Note: atan2(x, -z) donne la longitude correcte
                     double longitude = Math.toDegrees(Math.atan2(xLocal, -zLocal));
-                    
-                    System.out.println("Coordonnées GPS calculées: latitude=" + latitude + ", longitude=" + longitude);
                     
                     // Vérifier que les coordonnées sont valides
                     if (Double.isNaN(latitude) || Double.isNaN(longitude) || 
@@ -246,6 +227,8 @@ public class Interface extends Application {
                         System.out.println("ERREUR: Coordonnées GPS invalides !");
                         return;
                     }
+                    
+                    System.out.println("Coordonnées GPS calculées: latitude=" + latitude + ", longitude=" + longitude);
                     
                     // Recherche de l'aéroport le plus proche
                     Aeroport nearest = w.findNearestAirport(longitude, latitude);
@@ -257,7 +240,6 @@ public class Interface extends Application {
                         
                         // Affichage de la boule rouge sur l'aéroport
                         earth.displayRedSphere(nearest);
-                        System.out.println("Sphère rouge ajoutée pour l'aéroport " + nearest.getCodeIATA());
                         
                         // Récupération des vols en direction de cet aéroport via l'API
                         fetchFlightsForAirport(nearest);
@@ -274,6 +256,9 @@ public class Interface extends Application {
         primaryStage.show();
     }
 
+    private long lastApiCallTime = 0;
+    private static final long MIN_API_DELAY_MS = 1000; // Délai minimum de 1 seconde entre les appels API
+    
     /**
      * Récupère les vols en direction d'un aéroport via l'API aviationstack
      * @param airport L'aéroport de destination
@@ -282,6 +267,19 @@ public class Interface extends Application {
         // Exécution dans un thread séparé pour éviter de bloquer l'interface
         CompletableFuture.runAsync(() -> {
             try {
+                // Attendre un délai minimum entre les appels API pour éviter l'erreur 429
+                long currentTime = System.currentTimeMillis();
+                long timeSinceLastCall = currentTime - lastApiCallTime;
+                if (timeSinceLastCall < MIN_API_DELAY_MS) {
+                    try {
+                        Thread.sleep(MIN_API_DELAY_MS - timeSinceLastCall);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+                lastApiCallTime = System.currentTimeMillis();
+                
                 String apiKey = "cfaf27d3b7c76c08bafee49ddb0df72c"; // Clé d'exemple, à remplacer par la vôtre
                 String url = "http://api.aviationstack.com/v1/flights?access_key=" + apiKey + "&arr_iata=" + airport.getCodeIATA();
                 
@@ -304,6 +302,11 @@ public class Interface extends Application {
                             }
                         }
                         System.out.println("Affiché " + filler.getList().size() + " vols vers " + airport.getCodeIATA());
+                    });
+                } else if (response.statusCode() == 429) {
+                    System.err.println("Erreur 429: Trop de requêtes. Veuillez attendre avant de cliquer à nouveau.");
+                    javafx.application.Platform.runLater(() -> {
+                        System.out.println("Limite de taux d'API atteinte. Attendez quelques secondes avant de réessayer.");
                     });
                 } else {
                     System.err.println("Erreur API : " + response.statusCode());
