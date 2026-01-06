@@ -322,3 +322,4 @@ Le projet est fonctionnel et répond aux exigences du sujet du TP. Toutes les qu
 **Auteurs :** Jean Jaussaud, Mael Korchef  
 **Date :** 2025-2026  
 **Enseignant TP :** PEDRAZA Martin, ENSEA
+**Enseignant CM :** BIEHLER Gauthier, ENSEA
