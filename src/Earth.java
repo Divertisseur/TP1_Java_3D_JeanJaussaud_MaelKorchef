@@ -75,63 +75,54 @@ public class Earth extends Group {
 
     /**
      * Crée une sphère de couleur pour représenter un aéroport
-     * @param a L'aéroport à représenter
+     * @param airport L'aéroport à représenter
      * @param color La couleur de la sphère
      * @return La sphère créée
      */
-    public Sphere createSphere(Aeroport a, Color color) {
-        Sphere sphere = new Sphere(2); // Rayon 2 selon les spécifications du PDF
-        PhongMaterial material = new PhongMaterial();
-        material.setDiffuseColor(color);
-        sphere.setMaterial(material);
+    private Sphere createSphere(Aeroport airport, Color color) {
+        double lat = Math.toRadians(airport.getLatitude());
+        double lon = Math.toRadians(airport.getLongitude());
+        double R = 300;
         
-        // Conversion des coordonnées GPS en coordonnées 3D
-        // Formule : X = R * cos(lat) * sin(lon)
-        //           Y = -R * sin(lat)
-        //           Z = -R * cos(lat) * cos(lon)
-        // Avec R = 300 (rayon de la Terre)
-        double R = 300.0;
-        double latRad = Math.toRadians(a.getLatitude());
-        double lonRad = Math.toRadians(a.getLongitude());
+        double x = -R * Math.cos(lat) * Math.cos(lon);
+        double y = -R * Math.sin(lat);
+        double z = R * Math.cos(lat) * Math.sin(lon);
         
-        double x = R * Math.cos(latRad) * Math.sin(lonRad);
-        double y = -R * Math.sin(latRad);
-        double z = -R * Math.cos(latRad) * Math.cos(lonRad);
-        
-        // Positionner la sphère légèrement au-dessus de la surface de la Terre pour qu'elle soit visible
+        // Créer une sphère plus grande et légèrement au-dessus de la surface
+        Sphere sphere = new Sphere(8); // Augmenter la taille de 5 à 8
+        // Positionner légèrement au-dessus de la surface pour qu'elle soit visible
         double scale = 1.02; // 2% au-dessus de la surface
         sphere.setTranslateX(x * scale);
         sphere.setTranslateY(y * scale);
         sphere.setTranslateZ(z * scale);
         
-        // S'assurer que la sphère est pickable
-        sphere.setPickOnBounds(true);
+        PhongMaterial material = new PhongMaterial();
+        material.setDiffuseColor(color);
+        // Rendre le matériau émissif pour qu'il soit plus visible
+        material.setSelfIlluminationMap(material.getDiffuseMap());
+        sphere.setMaterial(material);
         
         return sphere;
     }
 
     /**
      * Affiche une sphère rouge sur l'aéroport donné
-     * @param a L'aéroport à afficher
+     * @param airport L'aéroport à afficher
      */
-    public void displayRedSphere(Aeroport a) {
-        if (a != null) {
-            Sphere redSphere = createSphere(a, Color.RED);
-            this.getChildren().add(redSphere);
-            System.out.println("Sphère rouge créée et ajoutée au groupe. Nombre d'enfants: " + this.getChildren().size());
-            System.out.println("Position de la sphère: (" + redSphere.getTranslateX() + ", " + redSphere.getTranslateY() + ", " + redSphere.getTranslateZ() + ")");
-        }
+    public void displayRedSphere(Aeroport airport) {
+        Sphere marker = createSphere(airport, Color.RED);
+        this.getChildren().add(marker);
+        System.out.println("Sphère rouge créée pour " + airport.getNom() + " à (" + 
+            marker.getTranslateX() + ", " + marker.getTranslateY() + ", " + marker.getTranslateZ() + ")");
     }
 
     /**
      * Affiche une sphère jaune sur l'aéroport donné
-     * @param a L'aéroport à afficher
+     * @param airport L'aéroport à afficher
      */
-    public void displayYellowSphere(Aeroport a) {
-        if (a != null) {
-            Sphere yellowSphere = createSphere(a, Color.YELLOW);
-            this.getChildren().add(yellowSphere);
-        }
+    public void displayYellowSphere(Aeroport airport) {
+        Sphere marker = createSphere(airport, Color.YELLOW);
+        this.getChildren().add(marker);
     }
 
     /**

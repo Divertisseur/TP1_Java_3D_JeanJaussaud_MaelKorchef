@@ -81,173 +81,186 @@ public class Interface extends Application {
             if (event.getButton() == MouseButton.SECONDARY && event.getEventType() == MouseEvent.MOUSE_CLICKED) {
                 System.out.println("Clic droit détecté !");
                 
-                // Essayer d'abord d'utiliser PickResult pour obtenir les coordonnées locales de la sphère
+                // Utiliser PickResult pour obtenir le point d'intersection
                 PickResult pickResult = event.getPickResult();
                 javafx.scene.Node intersectedNode = pickResult.getIntersectedNode();
                 
-                // Vérifier si on a cliqué sur la sphère de la Terre ou une sphère d'aéroport
-                if (intersectedNode == earth.getSph() || (intersectedNode != null && intersectedNode.getParent() == earth)) {
-                    // Utiliser les coordonnées locales de la sphère
-                    // PickResult retourne les coordonnées dans le système local de la sphère (sans rotation)
-                    javafx.geometry.Point3D localPoint = pickResult.getIntersectedPoint();
-                    
-                    double R = 300.0;
-                    double x = localPoint.getX();
-                    double y = localPoint.getY();
-                    double z = localPoint.getZ();
-                    
-                    // Normaliser pour s'assurer qu'on est sur la sphère
-                    double dist = Math.sqrt(x*x + y*y + z*z);
-                    if (dist > 0) {
-                        x = (x / dist) * R;
-                        y = (y / dist) * R;
-                        z = (z / dist) * R;
-                    }
-                    
-                    // Conversion directe en GPS (PickResult donne déjà les coordonnées dans le système local sans rotation)
-                    double latitude = Math.toDegrees(-Math.asin(y / R));
-                    double longitude = Math.toDegrees(Math.atan2(x, -z));
-                    
-                    // Vérifier que les coordonnées sont valides
-                    if (Double.isNaN(latitude) || Double.isNaN(longitude) || 
-                        Double.isInfinite(latitude) || Double.isInfinite(longitude)) {
-                        System.out.println("ERREUR: Coordonnées GPS invalides !");
-                        return;
-                    }
-                    
-                    System.out.println("Coordonnées GPS calculées (méthode PickResult): latitude=" + latitude + ", longitude=" + longitude);
-                    
-                    // Recherche de l'aéroport le plus proche
-                    Aeroport nearest = w.findNearestAirport(longitude, latitude);
-                    if (nearest != null) {
-                        System.out.println("Aéroport le plus proche trouvé : " + nearest);
-                        System.out.println("  - Code IATA: " + nearest.getCodeIATA());
-                        System.out.println("  - Nom: " + nearest.getNom());
-                        System.out.println("  - Position GPS: lat=" + nearest.getLatitude() + ", lon=" + nearest.getLongitude());
-                        
-                        // Affichage de la boule rouge sur l'aéroport
-                        earth.displayRedSphere(nearest);
-                        
-                        // Récupération des vols en direction de cet aéroport via l'API
-                        fetchFlightsForAirport(nearest);
-                    } else {
-                        System.out.println("Aucun aéroport trouvé !");
-                    }
-                    return; // Sortir si on a utilisé PickResult avec succès
-                }
+                // Vérifier si on a cliqué sur la sphère de la Terre ou un de ses enfants (marqueurs d'aéroports)
+                boolean isOnEarth = (intersectedNode == earth.getSph()) || 
+                                   (intersectedNode != null && earth.getChildren().contains(intersectedNode));
                 
-                // Sinon, utiliser la méthode de projection manuelle
-                // Utiliser les coordonnées 2D de la souris pour projeter un rayon depuis la caméra
-                double mouseX = event.getSceneX();
-                double mouseY = event.getSceneY();
-                double sceneWidth = theScene.getWidth();
-                double sceneHeight = theScene.getHeight();
+                javafx.geometry.Point3D localPoint = null;
                 
-                // Convertir les coordonnées de la souris en coordonnées normalisées (-1 à 1)
-                double normalizedX = (mouseX / sceneWidth) * 2.0 - 1.0;
-                double normalizedY = 1.0 - (mouseY / sceneHeight) * 2.0; // Inverser Y
-                
-                // Obtenir les paramètres de la caméra
-                double cameraZ = camera.getTranslateZ();
-                double fieldOfView = camera.getFieldOfView();
-                double aspectRatio = sceneWidth / sceneHeight;
-                
-                // Calculer la distance focale basée sur le field of view
-                double fovRad = Math.toRadians(fieldOfView);
-                double focalLength = 1.0 / Math.tan(fovRad / 2.0);
-                
-                // Direction du rayon depuis la caméra (qui est à (0, 0, cameraZ))
-                // Prendre en compte l'aspect ratio pour la projection correcte
-                double rayDirX = (normalizedX / focalLength) * aspectRatio;
-                double rayDirY = normalizedY / focalLength;
-                double rayDirZ = -1.0; // Vers l'avant (négatif Z)
-                
-                // Normaliser la direction du rayon
-                double rayLength = Math.sqrt(rayDirX*rayDirX + rayDirY*rayDirY + rayDirZ*rayDirZ);
-                if (rayLength > 0) {
-                    rayDirX /= rayLength;
-                    rayDirY /= rayLength;
-                    rayDirZ /= rayLength;
-                }
-                
-                // Intersection du rayon avec la sphère (centre à (0,0,0), rayon R=300)
-                double R = 300.0;
-                double cameraX = camera.getTranslateX();
-                double cameraY = camera.getTranslateY();
-                double cameraZPos = cameraZ;
-                
-                // Équation : ||camera + t*rayDir|| = R
-                // Résoudre pour t : t² + 2*(camera·rayDir)*t + (||camera||² - R²) = 0
-                double dot = cameraX*rayDirX + cameraY*rayDirY + cameraZPos*rayDirZ;
-                double cameraDistSq = cameraX*cameraX + cameraY*cameraY + cameraZPos*cameraZPos;
-                double discriminant = dot*dot - (cameraDistSq - R*R);
-                
-                if (discriminant >= 0) {
-                    // Prendre la solution la plus proche (t positif le plus petit)
-                    double t = -dot - Math.sqrt(discriminant);
-                    if (t < 0) t = -dot + Math.sqrt(discriminant);
-                    
-                    // Point d'intersection sur la sphère (dans le système de la scène avec rotation)
-                    double x = cameraX + t * rayDirX;
-                    double y = cameraY + t * rayDirY;
-                    double z = cameraZPos + t * rayDirZ;
-                    
-                    // Normaliser le point pour s'assurer qu'il est sur la sphère
-                    double dist = Math.sqrt(x*x + y*y + z*z);
-                    if (dist > 0) {
-                        x = (x / dist) * R;
-                        y = (y / dist) * R;
-                        z = (z / dist) * R;
-                    }
-                    
-                    // IMPORTANT: Inverser la rotation de la Terre pour obtenir les coordonnées dans le système local
-                    // La Terre tourne autour de l'axe Y, donc on doit appliquer une rotation inverse
+                if (isOnEarth && intersectedNode == earth.getSph()) {
+                    // Clic direct sur la sphère - utiliser les coordonnées locales
+                    localPoint = pickResult.getIntersectedPoint();
+                } else if (isOnEarth) {
+                    // Clic sur un marqueur d'aéroport - utiliser les coordonnées de la scène et convertir
+                    javafx.geometry.Point3D scenePoint = pickResult.getIntersectedPoint();
+                    // Convertir vers le système local de Earth en inversant la rotation
                     double rotationAngle = earth.getRy().getAngle();
                     double rotationRad = Math.toRadians(rotationAngle);
                     double cosRot = Math.cos(rotationRad);
                     double sinRot = Math.sin(rotationRad);
                     
-                    // Inversion de la rotation autour de Y: rotation de -angle
-                    // x_local = x * cos(-θ) - z * sin(-θ) = x * cos(θ) + z * sin(θ)
-                    // z_local = x * sin(-θ) + z * cos(-θ) = -x * sin(θ) + z * cos(θ)
-                    double xLocal = x * cosRot + z * sinRot;
-                    double zLocal = -x * sinRot + z * cosRot;
+                    // Les coordonnées de scène doivent être converties en coordonnées locales
+                    // On projette le point sur la sphère
+                    double R = 300.0;
+                    double x = scenePoint.getX();
+                    double y = scenePoint.getY();
+                    double z = scenePoint.getZ();
+                    double dist = Math.sqrt(x*x + y*y + z*z);
+                    if (dist > 0.001) {
+                        x = (x / dist) * R;
+                        y = (y / dist) * R;
+                        z = (z / dist) * R;
+                    }
+                    // Inverser la rotation pour obtenir les coordonnées locales
+                    // (rotationAngle, rotationRad, cosRot, sinRot déjà définis plus haut)
+                    // Formule inversée (échanger les signes pour corriger le problème de côté)
+                    double xLocal = x * cosRot - z * sinRot;
+                    double zLocal = x * sinRot + z * cosRot;
+                    localPoint = new javafx.geometry.Point3D(xLocal, y, zLocal);
+                } else {
+                    // Clic sur le Pane ou ailleurs - utiliser ray-casting pour trouver l'intersection avec la Terre
+                    double mouseX = event.getSceneX();
+                    double mouseY = event.getSceneY();
+                    double sceneWidth = theScene.getWidth();
+                    double sceneHeight = theScene.getHeight();
                     
-                    // Conversion des coordonnées 3D locales en GPS
-                    // Formule inverse de createSphere:
-                    // X = R * cos(lat) * sin(lon)  =>  sin(lon) = X / (R * cos(lat))
-                    // Y = -R * sin(lat)  =>  lat = -arcsin(Y / R)
-                    // Z = -R * cos(lat) * cos(lon)  =>  cos(lon) = -Z / (R * cos(lat))
-                    double latitude = Math.toDegrees(-Math.asin(y / R));
-                    double longitude = Math.toDegrees(Math.atan2(xLocal, -zLocal));
+                    // Convertir les coordonnées de la souris en coordonnées normalisées (-1 à 1)
+                    double normalizedX = (mouseX / sceneWidth) * 2.0 - 1.0;
+                    double normalizedY = 1.0 - (mouseY / sceneHeight) * 2.0;
                     
-                    // Vérifier que les coordonnées sont valides
-                    if (Double.isNaN(latitude) || Double.isNaN(longitude) || 
-                        Double.isInfinite(latitude) || Double.isInfinite(longitude)) {
-                        System.out.println("ERREUR: Coordonnées GPS invalides !");
+                    // Paramètres de la caméra
+                    double cameraZ = camera.getTranslateZ();
+                    double fieldOfView = camera.getFieldOfView();
+                    double aspectRatio = sceneWidth / sceneHeight;
+                    
+                    // Calculer la distance focale
+                    double fovRad = Math.toRadians(fieldOfView);
+                    double focalLength = 1.0 / Math.tan(fovRad / 2.0);
+                    
+                    // Direction du rayon depuis la caméra
+                    double rayDirX = (normalizedX / focalLength) * aspectRatio;
+                    double rayDirY = normalizedY / focalLength;
+                    double rayDirZ = -1.0;
+                    
+                    // Normaliser
+                    double rayLength = Math.sqrt(rayDirX*rayDirX + rayDirY*rayDirY + rayDirZ*rayDirZ);
+                    if (rayLength > 0) {
+                        rayDirX /= rayLength;
+                        rayDirY /= rayLength;
+                        rayDirZ /= rayLength;
+                    }
+                    
+                    // Intersection avec la sphère (centre à (0,0,0), rayon R=300)
+                    double R = 300.0;
+                    double cameraX = camera.getTranslateX();
+                    double cameraY = camera.getTranslateY();
+                    double cameraZPos = cameraZ;
+                    
+                    // Équation : ||camera + t*rayDir|| = R
+                    double dot = cameraX*rayDirX + cameraY*rayDirY + cameraZPos*rayDirZ;
+                    double cameraDistSq = cameraX*cameraX + cameraY*cameraY + cameraZPos*cameraZPos;
+                    double discriminant = dot*dot - (cameraDistSq - R*R);
+                    
+                    if (discriminant >= 0) {
+                        double t = -dot - Math.sqrt(discriminant);
+                        if (t < 0) t = -dot + Math.sqrt(discriminant);
+                        
+                        // Point d'intersection dans le système de la scène
+                        double xScene = cameraX + t * rayDirX;
+                        double yScene = cameraY + t * rayDirY;
+                        double zScene = cameraZPos + t * rayDirZ;
+                        
+                        // Normaliser
+                        double dist = Math.sqrt(xScene*xScene + yScene*yScene + zScene*zScene);
+                        if (dist > 0.001) {
+                            xScene = (xScene / dist) * R;
+                            yScene = (yScene / dist) * R;
+                            zScene = (zScene / dist) * R;
+                        }
+                        
+                        // Inverser la rotation de la Terre pour obtenir les coordonnées locales
+                        // La rotation est autour de l'axe Y
+                        // En JavaFX, une rotation positive autour de Y transforme:
+                        // x' = x*cos(θ) - z*sin(θ)
+                        // z' = x*sin(θ) + z*cos(θ)
+                        // Pour inverser (retourner au système local), on utilise l'angle négatif:
+                        // x = x'*cos(-θ) - z'*sin(-θ) = x'*cos(θ) + z'*sin(θ)
+                        // z = x'*sin(-θ) + z'*cos(-θ) = -x'*sin(θ) + z'*cos(θ)
+                        // Mais si les points apparaissent du mauvais côté, essayons l'inverse
+                        double rotationAngle = earth.getRy().getAngle();
+                        double rotationRad = Math.toRadians(rotationAngle);
+                        double cosRot = Math.cos(rotationRad);
+                        double sinRot = Math.sin(rotationRad);
+                        
+                        // Formule inversée (échanger les signes pour corriger le problème de côté)
+                        double xLocal = xScene * cosRot - zScene * sinRot;
+                        double zLocal = xScene * sinRot + zScene * cosRot;
+                        
+                        System.out.println("Point scène: (" + String.format("%.1f", xScene) + ", " + String.format("%.1f", yScene) + ", " + String.format("%.1f", zScene) + ")");
+                        System.out.println("Angle rotation: " + String.format("%.2f", rotationAngle) + "°");
+                        System.out.println("Point local (après inversion): (" + String.format("%.1f", xLocal) + ", " + String.format("%.1f", yScene) + ", " + String.format("%.1f", zLocal) + ")");
+                        
+                        localPoint = new javafx.geometry.Point3D(xLocal, yScene, zLocal);
+                    } else {
+                        System.out.println("Aucune intersection avec la sphère");
+                        return;
+                    }
+                }
+                
+                if (localPoint != null) {
+                    double R = 300.0;
+                    double x = localPoint.getX();
+                    double y = localPoint.getY();
+                    double z = localPoint.getZ();
+                    
+                    // Normaliser pour s'assurer qu'on est exactement sur la sphère
+                    double dist = Math.sqrt(x*x + y*y + z*z);
+                    if (dist > 0.001) {
+                        // Normaliser à R exactement
+                        x = (x / dist) * R;
+                        y = (y / dist) * R;
+                        z = (z / dist) * R;
+                    } else {
+                        System.out.println("Point trop proche du centre");
                         return;
                     }
                     
-                    System.out.println("Coordonnées GPS calculées: latitude=" + latitude + ", longitude=" + longitude);
+                    // Conversion en GPS (formule inverse de createSphere)
+                    // x = -R * cos(lat) * cos(lon)
+                    // y = -R * sin(lat)
+                    // z = R * cos(lat) * sin(lon)
+                    // Donc:
+                    // lat = -arcsin(y / R)
+                    // lon = atan2(z, -x)
+                    double latitude = Math.toDegrees(-Math.asin(y / R));
+                    double longitude = Math.toDegrees(Math.atan2(z, -x));
+                    
+                    // Vérifier que les coordonnées sont valides
+                    if (Double.isNaN(latitude) || Double.isNaN(longitude) || 
+                        Double.isInfinite(latitude) || Double.isInfinite(longitude) ||
+                        Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
+                        System.out.println("ERREUR: Coordonnées GPS invalides ! lat=" + latitude + ", lon=" + longitude);
+                        return;
+                    }
+                    
+                    System.out.println("GPS: lat=" + String.format("%.4f", latitude) + "°, lon=" + String.format("%.4f", longitude) + "°");
                     
                     // Recherche de l'aéroport le plus proche
                     Aeroport nearest = w.findNearestAirport(longitude, latitude);
                     if (nearest != null) {
-                        System.out.println("Aéroport le plus proche trouvé : " + nearest);
-                        System.out.println("  - Code IATA: " + nearest.getCodeIATA());
-                        System.out.println("  - Nom: " + nearest.getNom());
-                        System.out.println("  - Position GPS: lat=" + nearest.getLatitude() + ", lon=" + nearest.getLongitude());
-                        
-                        // Affichage de la boule rouge sur l'aéroport
+                        System.out.println("Aéroport trouvé: " + nearest.getNom() + " (" + nearest.getCodeIATA() + ")");
+                        System.out.println("  Position aéroport: lat=" + nearest.getLatitude() + "°, lon=" + nearest.getLongitude() + "°");
+                        System.out.println("  Distance depuis le clic: lat_diff=" + (nearest.getLatitude() - latitude) + "°, lon_diff=" + (nearest.getLongitude() - longitude) + "°");
                         earth.displayRedSphere(nearest);
-                        
-                        // Récupération des vols en direction de cet aéroport via l'API
+                        System.out.println("Sphère rouge ajoutée. Nombre d'enfants de Earth: " + earth.getChildren().size());
                         fetchFlightsForAirport(nearest);
                     } else {
-                        System.out.println("Aucun aéroport trouvé !");
+                        System.out.println("Aucun aéroport trouvé");
                     }
-                } else {
-                    System.out.println("Aucune intersection avec la sphère (clic peut-être en dehors de la Terre)");
                 }
             }
         });

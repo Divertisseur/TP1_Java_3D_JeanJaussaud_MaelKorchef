@@ -11,6 +11,37 @@ public class World {
     private List<Aeroport> list;
 
     /**
+     * Parse une ligne CSV en respectant les champs entre guillemets
+     * @param line La ligne CSV à parser
+     * @return Un tableau de champs
+     */
+    private String[] parseCSVLine(String line) {
+        List<String> fields = new ArrayList<>();
+        StringBuilder currentField = new StringBuilder();
+        boolean insideQuotes = false;
+        
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            
+            if (c == '"') {
+                // Toggle l'état "inside quotes"
+                insideQuotes = !insideQuotes;
+            } else if (c == ',' && !insideQuotes) {
+                // Fin d'un champ (seulement si on n'est pas dans des guillemets)
+                fields.add(currentField.toString().trim());
+                currentField = new StringBuilder();
+            } else {
+                // Ajouter le caractère au champ actuel
+                currentField.append(c);
+            }
+        }
+        // Ajouter le dernier champ
+        fields.add(currentField.toString().trim());
+        
+        return fields.toArray(new String[0]);
+    }
+
+    /**
      * Constructeur qui lit le fichier CSV et crée la liste des aéroports
      * @param fileName Le chemin vers le fichier CSV contenant les aéroports
      */
@@ -18,37 +49,41 @@ public class World {
         list = new ArrayList<>();
         try {
             BufferedReader buf = new BufferedReader(new FileReader(fileName));
-            String s = buf.readLine();
+            String s = buf.readLine(); // Lire l'en-tête
+            s = buf.readLine(); // Lire la première ligne de données
             while (s != null) {
-                s = s.replaceAll("\"", ""); // Enlève les guillemets qui séparent les champs de données GPS
-                String fields[] = s.split(",");
+                // Parser la ligne CSV en respectant les champs entre guillemets
+                String fields[] = parseCSVLine(s);
                 
-                // On ne garde que les "large_airport"
-                if (fields.length > 1 && fields[1].equals("large_airport")) {
+                // Charger tous les aéroports (pas seulement large_airport)
+                // Exclure seulement les aéroports fermés
+                if (fields.length > 1 && !fields[1].equals("closed")) {
                     try {
-                        // Le format du CSV est : code,type,nom,altitude,continent,country,region,ville,code_ICAO,code_IATA,...
-                        // Les coordonnées GPS sont dans un champ avec format "longitude, latitude"
+                        // Le format du CSV est : ident,type,name,elevation_ft,continent,iso_country,iso_region,municipality,gps_code,iata_code,local_code,coordinates,,
+                        // Les coordonnées GPS sont dans le champ 11 (index 11) avec format "longitude, latitude"
                         String nom = fields.length > 2 ? fields[2] : "";
                         String codeIATA = "";
                         double latitude = 0.0;
                         double longitude = 0.0;
                         
-                        // Chercher le code IATA (généralement dans le champ 9, index 9)
+                        // Chercher le code IATA (dans le champ 9, index 9)
                         if (fields.length > 9 && !fields[9].isEmpty()) {
                             codeIATA = fields[9];
                         }
                         
-                        // Chercher les coordonnées GPS dans la ligne originale
-                        // Format typique : "longitude, latitude" dans un champ
-                        // On cherche un pattern de deux nombres séparés par une virgule et un espace
-                        java.util.regex.Pattern coordPattern = java.util.regex.Pattern.compile("(-?\\d+\\.?\\d*),\\s*(-?\\d+\\.?\\d*)");
-                        java.util.regex.Matcher matcher = coordPattern.matcher(s);
-                        if (matcher.find()) {
-                            try {
-                                longitude = Double.parseDouble(matcher.group(1).trim());
-                                latitude = Double.parseDouble(matcher.group(2).trim());
-                            } catch (NumberFormatException e) {
-                                // Ignorer si ce n'est pas un nombre valide
+                        // Chercher les coordonnées GPS dans le champ 11 (index 11)
+                        // Format : "longitude, latitude" ou longitude, latitude (sans guillemets après parsing)
+                        if (fields.length > 11 && !fields[11].isEmpty()) {
+                            String coords = fields[11].replaceAll("\"", "").trim();
+                            // Parser les coordonnées (format: "longitude, latitude" ou longitude, latitude)
+                            String[] coordParts = coords.split(",");
+                            if (coordParts.length == 2) {
+                                try {
+                                    longitude = Double.parseDouble(coordParts[0].trim());
+                                    latitude = Double.parseDouble(coordParts[1].trim());
+                                } catch (NumberFormatException e) {
+                                    // Ignorer si ce n'est pas un nombre valide
+                                }
                             }
                         }
                         
