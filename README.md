@@ -1,4 +1,4 @@
-# TP1_Java_3D_JeanJaussaud_MaelKorchef
+# TP_Java_3D_JeanJaussaud_MaelKorchef
 
 ## Compte rendu de TP - DataFlight Project "Catch me if you can!"
 
